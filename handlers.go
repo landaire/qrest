@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
+	"fmt"
+	"strconv"
 )
 
 func handleDb(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -49,6 +51,27 @@ func setupRoutes(router *httprouter.Router) {
 		// `value` and `key` as whatever they were in the last(?) iteration of the above for loop
 		value := value
 		key := key
+		rows, ok := value.([]interface{})
+
+		if !ok {
+			logger.Fatalln("unknown type")
+		}
+
+		router.POST(fmt.Sprintf("/%s", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+			data, err := readRequestData(r)
+			if err != nil {
+				w.Write(http.StatusBadRequest)
+				return
+			}
+
+			dataMutex.Lock()
+
+			dirty = true
+			rows = append(rows, data)
+			data[key] = rows
+
+			dataMutex.Unlock()
+		})
 
 		router.GET(fmt.Sprintf("/%s", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			genericJsonResponse(w, r, value)
@@ -57,13 +80,6 @@ func setupRoutes(router *httprouter.Router) {
 		for _, method := range []string{"GET", "PATCH", "PUT", "DELETE"} {
 			method := method
 			router.Handle(method, fmt.Sprintf("/%s/:id", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-				rows, ok := value.([]interface{})
-				if !ok {
-					logger.Error("unknown type")
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-
 				idParam, _ := strconv.ParseFloat(ps.ByName("id"), 64)
 				for i, row := range rows {
 					rowMap, _ := row.(map[string]interface{})
@@ -147,7 +163,8 @@ func setupRoutes(router *httprouter.Router) {
 
 					dataMutex.Lock()
 					dirty = true
-					data[key] = append(rows, newData)
+					rows = append(rows, newData)
+					data[key]
 					dataMutex.Unlock()
 
 					w.WriteHeader(http.StatusCreated)
