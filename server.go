@@ -84,6 +84,10 @@ func main() {
 								}
 
 								dirty = true
+
+								// since value is a shadow copy, we need to update it as it's now stale
+								value = data[key]
+
 								dataMutex.Unlock()
 
 								return
@@ -104,15 +108,27 @@ func main() {
 								}
 
 								dirty = true
+
+								// since value is a shadow copy, we need to update it as it's now stale
+								value = data[key]
+
 								dataMutex.Unlock()
 
 								w.WriteHeader(http.StatusOK)
+
+
 								return
 							case "DELETE":
 								dataMutex.Lock()
 								data[key] = append(rows[:i], rows[i+1:]...)
 								dirty = true
+
+								// since value is a shadow copy, we need to update it as it's now stale
+								value = data[key]
+
 								dataMutex.Unlock()
+
+								w.WriteHeader(http.StatusOK)
 								return
 						}
 					}
