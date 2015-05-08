@@ -45,29 +45,97 @@ func main() {
 		value := value
 		key := key
 
-		router.Handle("GET", fmt.Sprintf("/%s", key), func (w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		router.GET(fmt.Sprintf("/%s", key), func (w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			value := value
 			genericJsonResponse(w, r, value)
 		})
 
-		router.Handle("GET", fmt.Sprintf("/%s/:id", key), func (w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-			rows, ok := value.([]interface{})
-			if !ok {
-				logger.Error("unknown type")
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-
-			idParam, _ := strconv.ParseFloat(ps.ByName("id"), 64)
-			for _, row := range rows {
-				rowMap, _ := row.(map[string]interface{})
-				if id, ok := rowMap["id"]; ok && id.(float64) == idParam {
-					genericJsonResponse(w, r, row)
+		for _, method := range []string{"GET", "PATCH", "PUT", "DELETE"} {
+			method := method
+			router.Handle(method, fmt.Sprintf("/%s/:id", key), func (w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+				rows, ok := value.([]interface{})
+				if !ok {
+					logger.Error("unknown type")
+					w.WriteHeader(http.StatusInternalServerError)
+					return
 				}
-			}
 
-			w.WriteHeader(http.StatusNotFound)
-		})
+				idParam, _ := strconv.ParseFloat(ps.ByName("id"), 64)
+				for i, row := range rows {
+					rowMap, _ := row.(map[string]interface{})
+
+					// Found the item
+					if id, ok := rowMap["id"]; ok && id.(float64) == idParam {
+
+						// The method type determines how we respond
+						switch (method) {
+							case "GET":
+								genericJsonResponse(w, r, row)
+								return
+							case "PATCH":
+								updatedData, err := readRequestData(r)
+								if err != nil {
+									w.WriteHeader(http.StatusBadRequest)
+									return
+								}
+
+								dataMutex.Lock()
+								for key, value := range updatedData {
+									rowMap[key] = value
+								}
+
+								dirty = true
+								dataMutex.Unlock()
+
+								return
+							case "PUT":
+								updatedData, err := readRequestData(r)
+								if err != nil {
+									w.WriteHeader(http.StatusBadRequest)
+									return
+								}
+
+								dataMutex.Lock()
+								for key, _ := range rowMap {
+									rowMap[key] = nil
+								}
+
+								for key, value := range updatedData {
+									rowMap[key] = value
+								}
+
+								dirty = true
+								dataMutex.Unlock()
+
+								w.WriteHeader(http.StatusOK)
+								return
+							case "DELETE":
+								dataMutex.Lock()
+								data[key] = append(rows[:i], rows[i+1:]...)
+								dirty = true
+								dataMutex.Unlock()
+								return
+						}
+					}
+				}
+
+				if method == "PUT" {
+					newData, err := readRequestData(r)
+					if err != nil {
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+
+					dataMutex.Lock()
+					dirty = true
+					data[key] = append(rows, newData)
+					dataMutex.Unlock()
+
+					w.WriteHeader(http.StatusCreated)
+				}
+				w.WriteHeader(http.StatusNotFound)
+			})
+		}
 	}
 
 	go flushJson()
@@ -112,10 +180,10 @@ func flushJson() {
 
 		if dirty {
 			dataMutex.RLock()
-			defer dataMutex.RUnlock()
 			dirty = false
 
 			jsonData, err := json.Marshal(data)
+			dataMutex.RUnlock()
 			if err != nil {
 				logger.Error(err)
 				continue
