@@ -21,6 +21,6 @@ func genericJsonResponse(w http.ResponseWriter, r *http.Request, data interface{
 }
 
 func jsonResponse(data []byte, w http.ResponseWriter) {
-	w.Write(data)
 	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
 }
