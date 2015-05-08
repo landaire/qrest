@@ -46,7 +46,6 @@ func main() {
 		key := key
 
 		router.GET(fmt.Sprintf("/%s", key), func (w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-			value := value
 			genericJsonResponse(w, r, value)
 		})
 
