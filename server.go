@@ -1,26 +1,23 @@
 package main
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"os"
 
+	"fmt"
+	"net/http"
+	"strconv"
+	"sync"
 	"github.com/Sirupsen/logrus"
 	"github.com/codegangsta/negroni"
 	"github.com/julienschmidt/httprouter"
 	nlogrus "github.com/meatballhat/negroni-logrus"
-	"time"
-	"sync"
-	"fmt"
-	"net/http"
-	"strconv"
 )
 
 var (
-	data   = make(map[string]interface{})
+	data      = make(map[string]interface{})
 	dataMutex sync.RWMutex
-	dirty  = false
-	logger *logrus.Logger
+	dirty     = false
+	logger    *logrus.Logger
 )
 
 func main() {
@@ -45,13 +42,13 @@ func main() {
 		value := value
 		key := key
 
-		router.GET(fmt.Sprintf("/%s", key), func (w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		router.GET(fmt.Sprintf("/%s", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			genericJsonResponse(w, r, value)
 		})
 
 		for _, method := range []string{"GET", "PATCH", "PUT", "DELETE"} {
 			method := method
-			router.Handle(method, fmt.Sprintf("/%s/:id", key), func (w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+			router.Handle(method, fmt.Sprintf("/%s/:id", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 				rows, ok := value.([]interface{})
 				if !ok {
 					logger.Error("unknown type")
@@ -67,69 +64,68 @@ func main() {
 					if id, ok := rowMap["id"]; ok && id.(float64) == idParam {
 
 						// The method type determines how we respond
-						switch (method) {
-							case "GET":
-								genericJsonResponse(w, r, row)
+						switch method {
+						case "GET":
+							genericJsonResponse(w, r, row)
+							return
+						case "PATCH":
+							updatedData, err := readRequestData(r)
+							if err != nil {
+								w.WriteHeader(http.StatusBadRequest)
 								return
-							case "PATCH":
-								updatedData, err := readRequestData(r)
-								if err != nil {
-									w.WriteHeader(http.StatusBadRequest)
-									return
-								}
+							}
 
-								dataMutex.Lock()
-								for key, value := range updatedData {
-									rowMap[key] = value
-								}
+							dataMutex.Lock()
+							for key, value := range updatedData {
+								rowMap[key] = value
+							}
 
-								dirty = true
+							dirty = true
 
-								// since value is a shadow copy, we need to update it as it's now stale
-								value = data[key]
+							// since value is a shadow copy, we need to update it as it's now stale
+							value = data[key]
 
-								dataMutex.Unlock()
+							dataMutex.Unlock()
 
+							return
+						case "PUT":
+							updatedData, err := readRequestData(r)
+							if err != nil {
+								w.WriteHeader(http.StatusBadRequest)
 								return
-							case "PUT":
-								updatedData, err := readRequestData(r)
-								if err != nil {
-									w.WriteHeader(http.StatusBadRequest)
-									return
-								}
+							}
 
-								dataMutex.Lock()
-								for key, _ := range rowMap {
-									rowMap[key] = nil
-								}
+							dataMutex.Lock()
+							for key, _ := range rowMap {
+								rowMap[key] = nil
+							}
 
-								for key, value := range updatedData {
-									rowMap[key] = value
-								}
+							for key, value := range updatedData {
+								rowMap[key] = value
+							}
 
-								dirty = true
+							dirty = true
 
-								// since value is a shadow copy, we need to update it as it's now stale
-								value = data[key]
+							// since value is a shadow copy, we need to update it as it's now stale
+							value = data[key]
 
-								dataMutex.Unlock()
+							dataMutex.Unlock()
 
-								w.WriteHeader(http.StatusOK)
+							w.WriteHeader(http.StatusOK)
 
+							return
+						case "DELETE":
+							dataMutex.Lock()
+							data[key] = append(rows[:i], rows[i+1:]...)
+							dirty = true
 
-								return
-							case "DELETE":
-								dataMutex.Lock()
-								data[key] = append(rows[:i], rows[i+1:]...)
-								dirty = true
+							// since value is a shadow copy, we need to update it as it's now stale
+							value = data[key]
 
-								// since value is a shadow copy, we need to update it as it's now stale
-								value = data[key]
+							dataMutex.Unlock()
 
-								dataMutex.Unlock()
-
-								w.WriteHeader(http.StatusOK)
-								return
+							w.WriteHeader(http.StatusOK)
+							return
 						}
 					}
 				}
@@ -159,52 +155,4 @@ func main() {
 	n.Use(logr)
 	n.UseHandler(router)
 	n.Run(port)
-}
-
-// Parses the JSON file provided in the command arguments
-func parseJsonFile() {
-	if len(os.Args) != 2 {
-		logger.Fatalln("Invalid number of arguments")
-	}
-
-	filename := os.Args[1]
-	file, err := os.Open(filename)
-	if err != nil {
-		logger.Fatalln(err)
-	}
-
-	defer file.Close()
-
-	jsonData, err := ioutil.ReadAll(file)
-	if err != nil {
-		logger.Fatalln(err)
-	}
-
-	err = json.Unmarshal(jsonData, &data)
-	if err != nil {
-		logger.Fatalln(err)
-	}
-}
-
-func flushJson() {
-	filename := os.Args[1]
-
-	for {
-		// Flush every 30 seconds
-		<-time.After(30 * time.Second)
-
-		if dirty {
-			dataMutex.RLock()
-			dirty = false
-
-			jsonData, err := json.Marshal(data)
-			dataMutex.RUnlock()
-			if err != nil {
-				logger.Error(err)
-				continue
-			}
-
-			ioutil.WriteFile(filename, jsonData, 0755)
-		}
-	}
 }

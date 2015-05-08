@@ -1,11 +1,12 @@
 package main
+
 import (
-	"net/http"
-	"github.com/julienschmidt/httprouter"
 	"encoding/json"
 	"io/ioutil"
-)
+	"net/http"
 
+	"github.com/julienschmidt/httprouter"
+)
 
 func handleDb(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	genericJsonResponse(w, r, data)
