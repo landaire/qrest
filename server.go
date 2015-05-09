@@ -2,11 +2,8 @@ package main
 
 import (
 	"os"
-
-	"fmt"
-	"net/http"
-	"strconv"
 	"sync"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/codegangsta/negroni"
 	"github.com/julienschmidt/httprouter"
@@ -33,7 +30,7 @@ func main() {
 
 	router := httprouter.New()
 
-	setupRoutes(&router)
+	setupRoutes(router)
 
 	go flushJson()
 

@@ -60,7 +60,7 @@ func setupRoutes(router *httprouter.Router) {
 		router.POST(fmt.Sprintf("/%s", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			data, err := readRequestData(r)
 			if err != nil {
-				w.Write(http.StatusBadRequest)
+				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
 
@@ -164,7 +164,7 @@ func setupRoutes(router *httprouter.Router) {
 					dataMutex.Lock()
 					dirty = true
 					rows = append(rows, newData)
-					data[key]
+					data[key] = rows
 					dataMutex.Unlock()
 
 					w.WriteHeader(http.StatusCreated)

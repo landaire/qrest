@@ -10,6 +10,7 @@ import (
 // Parses the JSON file provided in the command arguments
 func parseJsonFile() {
 	if len(os.Args) != 2 {
+		logger.Println(os.Args)
 		logger.Fatalln("Invalid number of arguments")
 	}
 
