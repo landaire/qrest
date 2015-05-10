@@ -1,6 +1,6 @@
 FROM golang
  
-ADD . $GOPATH/src/github.com/landaire/qrest
+ADD . /go/src/github.com/landaire/qrest
 
 WORKDIR src/github.com/landaire/qrest
 
