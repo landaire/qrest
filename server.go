@@ -30,7 +30,8 @@ func main() {
 
 	router := httprouter.New()
 
-	setupRoutes(router)
+	addStaticRoutes(router)
+	addDynamicRoutes(router)
 
 	go flushJson()
 

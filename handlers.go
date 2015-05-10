@@ -10,41 +10,25 @@ import (
 	"strconv"
 )
 
-func handleDb(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	genericJsonResponse(w, r, data)
-}
 
-func genericJsonResponse(w http.ResponseWriter, r *http.Request, data interface{}) {
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	jsonResponse(jsonData, w)
-}
-
-func jsonResponse(data []byte, w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
-}
-
-func readRequestData(r *http.Request) (returnData map[string]interface{}, err error) {
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return
-	}
-
-	returnData = make(map[string]interface{})
-
-	err = json.Unmarshal(data, &returnData)
-
-	return
-}
-
-func setupRoutes(router *httprouter.Router) {
-	router.Handle("GET", "/db", handleDb)
-
+// addDynamicRoutes will dynamically add RESTful routes to the router. Routes are added based off of the keys that
+// are present in the parsed JSON file. For instance, if a JSON file is set up like:
+//
+//    {
+//        "posts": [ { "id": 1, "title": "Foo" } ]
+//    }
+//
+// The following routes will be created:
+//
+//    POST /posts (creates a new post record)
+//    GET /posts (returns all post records)
+//    GET /posts/:id (returns a specific record)
+//    PUT /posts/:id (creates or updates a record with the specified ID)
+//    PATCH /posts/:id (updates a record with the specified ID)
+//    DELETE /posts/:id (deletes the specified record)
+//
+//
+func addDynamicRoutes(router *httprouter.Router) {
 	// set up our routes
 	for key, value := range data {
 		// Shadow these variables. If this isn't done, then the closures below will see
@@ -173,4 +157,45 @@ func setupRoutes(router *httprouter.Router) {
 			})
 		}
 	}
+}
+
+// addStaticRoutes adds all routes which are present regardless of the JSON file's data. These include
+//
+//    GET /db (returns the entire DB as a JSON structure)
+//
+//
+func addStaticRoutes(router *httprouter.Router) {
+	router.GET("/db", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		genericJsonResponse(w, r, data)
+	})
+}
+
+// genericJsonResponse writes a generic JSON response and handles any errors which may occur
+// when marshalling the data
+//
+func genericJsonResponse(w http.ResponseWriter, r *http.Request, data interface{}) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonData)
+}
+
+// readRequestData parses the JSON body of a request
+//
+func readRequestData(r *http.Request) (returnData map[string]interface{}, err error) {
+	var data []byte
+	data, err = ioutil.ReadAll(r.Body)
+	if err != nil {
+		return
+	}
+
+	returnData = make(map[string]interface{})
+
+	err = json.Unmarshal(data, &returnData)
+
+	return
 }
