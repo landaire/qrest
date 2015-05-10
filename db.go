@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"os/signal"
 	"time"
 )
 
@@ -36,11 +37,10 @@ func parseJsonFile() {
 // Flushes the in-memory data to the JSON file
 func flushJson() {
 	filename := os.Args[1]
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
 
-	for {
-		// Flush every 30 seconds
-		<-time.After(30 * time.Second)
-
+	write := func() {
 		if dirty {
 			dataMutex.RLock()
 			dirty = false
@@ -49,10 +49,23 @@ func flushJson() {
 			dataMutex.RUnlock()
 			if err != nil {
 				logger.Error(err)
-				continue
+				return
 			}
 
 			ioutil.WriteFile(filename, jsonData, 0755)
+		}
+	}
+
+	for {
+		select {
+		case sig := <-c:
+			write()
+			if sig == os.Interrupt {
+				os.Exit(0)
+			}
+		// Flush every 30 seconds
+		case <-time.After(30 * time.Second):
+			write()
 		}
 	}
 }
