@@ -1,4 +1,3 @@
-
 // Command qrest is a quick RESTful JSON server
 //
 // How to use
@@ -32,7 +31,6 @@ package main
 
 import (
 	"os"
-	"sync"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/codegangsta/negroni"
@@ -41,10 +39,7 @@ import (
 )
 
 var (
-	data      = make(map[string]interface{})
-	dataMutex sync.RWMutex
-	dirty     = false
-	logger    *logrus.Logger
+	logger *logrus.Logger
 )
 
 func main() {

@@ -2,11 +2,109 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 )
+
+var (
+	serverData    = make(BackingData)
+	dataMutex     sync.RWMutex
+	dirty         = false
+	ErrorNotFound = errors.New("Item not present in data set")
+)
+
+type BackingData map[string]interface{}
+
+func (b BackingData) recordIndex(itemType string, id int64) (int, error) {
+	rows, err := b.ItemType(itemType)
+
+	if err != nil {
+		return -1, err
+	}
+
+	for i, row := range rows {
+		rowMap, _ := row.(map[string]interface{})
+
+		currentId, ok := rowMap["id"].(json.Number)
+		currentIdAsInt, err := currentId.Int64()
+
+		if !ok {
+			logger.Errorf("ID either not present for record %i or it's unknown type\n", i)
+			continue
+		}
+
+		if err != nil {
+			logger.Errorln(err)
+			continue
+		}
+
+		// Found the item
+		if currentIdAsInt == id {
+			return i, nil
+		}
+	}
+
+	return -1, ErrorNotFound
+}
+
+func (b BackingData) RecordWithId(itemType string, id int64) (map[string]interface{}, error) {
+	rows, err := b.ItemType(itemType)
+
+	if err != nil {
+		return nil, err
+	}
+
+	index, _ := b.recordIndex(itemType, id)
+
+	rowMap := rows[index].(map[string]interface{})
+
+	return rowMap, nil
+}
+
+func (b BackingData) DeleteRecord(itemType string, id int64) error {
+	records, err := b.ItemType(itemType)
+	if err != nil {
+		return err
+	}
+
+	index, err := b.recordIndex(itemType, id)
+	if err != nil {
+		return err
+	}
+
+	b[itemType] = append(records[:index], records[index+1:]...)
+
+	return nil
+}
+
+func (b BackingData) ItemType(itemType string) ([]interface{}, error) {
+	value, ok := b[itemType]
+
+	if !ok {
+		return nil, ErrorNotFound
+	}
+
+	return value.([]interface{}), nil
+}
+
+func (b BackingData) ItemTypes() []string {
+	itemTypes := make([]string, 0, len(serverData))
+
+	for key, _ := range b {
+		itemTypes = append(itemTypes, key)
+	}
+
+	return itemTypes
+}
+
+func (b BackingData) AddRecord(itemType string, record map[string]interface{}) {
+	items, _ := b.ItemType(itemType)
+	b[itemType] = append(items, record)
+}
 
 // Parses the JSON file provided in the command arguments
 func parseJsonFile() {
@@ -23,12 +121,11 @@ func parseJsonFile() {
 
 	defer file.Close()
 
-	jsonData, err := ioutil.ReadAll(file)
-	if err != nil {
-		logger.Fatalln(err)
-	}
+	decoder := json.NewDecoder(file)
+	// decode as json.Number type instead of float64
+	decoder.UseNumber()
 
-	err = json.Unmarshal(jsonData, &data)
+	err = decoder.Decode(&serverData)
 	if err != nil {
 		logger.Fatalln(err)
 	}
@@ -45,7 +142,7 @@ func flushJson() {
 			dataMutex.RLock()
 			dirty = false
 
-			jsonData, err := json.Marshal(data)
+			jsonData, err := json.Marshal(serverData)
 			dataMutex.RUnlock()
 			if err != nil {
 				logger.Error(err)

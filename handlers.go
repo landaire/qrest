@@ -2,14 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 
-	"github.com/julienschmidt/httprouter"
 	"fmt"
 	"strconv"
-)
 
+	"github.com/julienschmidt/httprouter"
+)
 
 // addDynamicRoutes will dynamically add RESTful routes to the router. Routes are added based off of the keys that
 // are present in the parsed JSON file. For instance, if a JSON file is set up like:
@@ -30,18 +29,12 @@ import (
 //
 func addDynamicRoutes(router *httprouter.Router) {
 	// set up our routes
-	for key, value := range data {
+	for _, itemType := range serverData.ItemTypes() {
 		// Shadow these variables. If this isn't done, then the closures below will see
 		// `value` and `key` as whatever they were in the last(?) iteration of the above for loop
-		value := value
-		key := key
-		rows, ok := value.([]interface{})
+		itemType := itemType
 
-		if !ok {
-			logger.Fatalln("unknown type")
-		}
-
-		router.POST(fmt.Sprintf("/%s", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		router.POST(fmt.Sprintf("/%s", itemType), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			data, err := readRequestData(r)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
@@ -51,93 +44,89 @@ func addDynamicRoutes(router *httprouter.Router) {
 			dataMutex.Lock()
 
 			dirty = true
-			rows = append(rows, data)
-			data[key] = rows
+			serverData.AddRecord(itemType, data)
 
 			dataMutex.Unlock()
 		})
 
-		router.GET(fmt.Sprintf("/%s", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-			genericJsonResponse(w, r, value)
+		router.GET(fmt.Sprintf("/%s", itemType), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+			items, _ := serverData.ItemType(itemType)
+			genericJsonResponse(w, r, items)
 		})
 
 		for _, method := range []string{"GET", "PATCH", "PUT", "DELETE"} {
 			method := method
-			router.Handle(method, fmt.Sprintf("/%s/:id", key), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-				idParam, _ := strconv.ParseFloat(ps.ByName("id"), 64)
-				for i, row := range rows {
-					rowMap, _ := row.(map[string]interface{})
+			router.Handle(method, fmt.Sprintf("/%s/:id", itemType), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+				idParam, _ := strconv.ParseInt(ps.ByName("id"), 10, 64)
 
-					// Found the item
-					if id, ok := rowMap["id"]; ok && id.(float64) == idParam {
+				record, err := serverData.RecordWithId(itemType, idParam)
 
-						// The method type determines how we respond
-						switch method {
-						case "GET":
-							genericJsonResponse(w, r, row)
-							return
-						case "PATCH":
-							updatedData, err := readRequestData(r)
-							if err != nil {
-								w.WriteHeader(http.StatusBadRequest)
-								return
-							}
-
-							dataMutex.Lock()
-							for key, value := range updatedData {
-								rowMap[key] = value
-							}
-
-							dirty = true
-
-							// since value is a shadow copy, we need to update it as it's now stale
-							value = data[key]
-
-							dataMutex.Unlock()
-
-							return
-						case "PUT":
-							updatedData, err := readRequestData(r)
-							if err != nil {
-								w.WriteHeader(http.StatusBadRequest)
-								return
-							}
-
-							dataMutex.Lock()
-							for key, _ := range rowMap {
-								rowMap[key] = nil
-							}
-
-							for key, value := range updatedData {
-								rowMap[key] = value
-							}
-
-							dirty = true
-
-							// since value is a shadow copy, we need to update it as it's now stale
-							value = data[key]
-
-							dataMutex.Unlock()
-
-							w.WriteHeader(http.StatusOK)
-
-							return
-						case "DELETE":
-							dataMutex.Lock()
-							data[key] = append(rows[:i], rows[i+1:]...)
-							dirty = true
-
-							// since value is a shadow copy, we need to update it as it's now stale
-							value = data[key]
-
-							dataMutex.Unlock()
-
-							w.WriteHeader(http.StatusOK)
-							return
-						}
+				if err != nil {
+					if err == ErrorNotFound {
+						w.WriteHeader(http.StatusNotFound)
+					} else {
+						w.WriteHeader(http.StatusInternalServerError)
 					}
 				}
 
+				// The method type determines how we respond
+				switch method {
+				case "GET":
+					genericJsonResponse(w, r, record)
+					return
+				case "PATCH":
+					updatedData, err := readRequestData(r)
+					if err != nil {
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+
+					dataMutex.Lock()
+					for key, value := range updatedData {
+						record[key] = value
+					}
+
+					dirty = true
+
+					dataMutex.Unlock()
+
+					return
+				case "PUT":
+					updatedData, err := readRequestData(r)
+					if err != nil {
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+
+					dataMutex.Lock()
+
+					for key, _ := range record {
+						record[key] = nil
+					}
+
+					for key, value := range updatedData {
+						record[key] = value
+					}
+
+					dirty = true
+
+					dataMutex.Unlock()
+
+					w.WriteHeader(http.StatusOK)
+					return
+				case "DELETE":
+					dataMutex.Lock()
+
+					dirty = true
+					serverData.DeleteRecord(itemType, idParam)
+
+					dataMutex.Unlock()
+
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+
+				// If it's not found, then this request acts as a POST
 				if method == "PUT" {
 					newData, err := readRequestData(r)
 					if err != nil {
@@ -145,15 +134,21 @@ func addDynamicRoutes(router *httprouter.Router) {
 						return
 					}
 
+					if _, hasId := newData["id"]; !hasId {
+						newData["id"] = idParam
+					}
+
 					dataMutex.Lock()
 					dirty = true
-					rows = append(rows, newData)
-					data[key] = rows
+
+					serverData.AddRecord(itemType, newData)
+
 					dataMutex.Unlock()
 
 					w.WriteHeader(http.StatusCreated)
+					return
 				}
-				w.WriteHeader(http.StatusNotFound)
+
 			})
 		}
 	}
@@ -166,7 +161,7 @@ func addDynamicRoutes(router *httprouter.Router) {
 //
 func addStaticRoutes(router *httprouter.Router) {
 	router.GET("/db", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		genericJsonResponse(w, r, data)
+		genericJsonResponse(w, r, serverData)
 	})
 }
 
@@ -187,15 +182,13 @@ func genericJsonResponse(w http.ResponseWriter, r *http.Request, data interface{
 // readRequestData parses the JSON body of a request
 //
 func readRequestData(r *http.Request) (returnData map[string]interface{}, err error) {
-	var data []byte
-	data, err = ioutil.ReadAll(r.Body)
-	if err != nil {
-		return
-	}
-
 	returnData = make(map[string]interface{})
 
-	err = json.Unmarshal(data, &returnData)
+	decoder := json.NewDecoder(r.Body)
+	decoder.UseNumber()
+
+	// don't handle err here since it's returned
+	err = decoder.Decode(&returnData)
 
 	return
 }
