@@ -165,21 +165,24 @@ func flushJson() {
 	signal.Notify(c, os.Interrupt)
 
 	write := func() {
-		if dirty {
-			dataMutex.RLock()
-			dirty = false
-
-			jsonData, err := json.Marshal(serverData)
-			dataMutex.RUnlock()
-			if err != nil {
-				logger.Error(err)
-				return
-			}
-
-			ioutil.WriteFile(filename, jsonData, 0755)
+		if !dirty {
+			return
 		}
+
+		dataMutex.RLock()
+		dirty = false
+
+		jsonData, err := json.Marshal(serverData)
+		dataMutex.RUnlock()
+		if err != nil {
+			logger.Error(err)
+			return
+		}
+
+		ioutil.WriteFile(filename, jsonData, 0755)
 	}
 
+	// Flush loop
 	for {
 		select {
 		case sig := <-c:
