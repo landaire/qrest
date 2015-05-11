@@ -43,8 +43,18 @@ func addDynamicRoutes(router *httprouter.Router) {
 
 			dataMutex.Lock()
 
+			var id int64
+			_, err = serverData.RecordWithId(itemType, id)
+			for id = maxIds[itemType]; err != ErrorNotFound; _, err = serverData.RecordWithId(itemType, id) {
+				id++
+			}
+
+			data["id"] = id
+
 			dirty = true
 			serverData.AddRecord(itemType, data)
+
+			maxIds[itemType] = id + 1
 
 			dataMutex.Unlock()
 		})
@@ -148,7 +158,6 @@ func addDynamicRoutes(router *httprouter.Router) {
 					w.WriteHeader(http.StatusCreated)
 					return
 				}
-
 			})
 		}
 	}

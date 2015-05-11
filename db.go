@@ -14,6 +14,7 @@ var (
 	serverData    = make(BackingData)
 	dataMutex     sync.RWMutex
 	dirty         = false
+	maxIds		  = make(map[string]int64)
 	ErrorNotFound = errors.New("Item not present in data set")
 )
 
@@ -58,7 +59,10 @@ func (b BackingData) RecordWithId(itemType string, id int64) (map[string]interfa
 		return nil, err
 	}
 
-	index, _ := b.recordIndex(itemType, id)
+	index, err := b.recordIndex(itemType, id)
+	if err != nil {
+		return nil, err
+	}
 
 	rowMap := rows[index].(map[string]interface{})
 
@@ -128,6 +132,29 @@ func parseJsonFile() {
 	err = decoder.Decode(&serverData)
 	if err != nil {
 		logger.Fatalln(err)
+	}
+
+	// Get the highest IDs
+	for _, itemType := range serverData.ItemTypes() {
+		rows, _ := serverData.ItemType(itemType)
+		for _, record := range rows {
+			record := record.(map[string]interface{})
+			id, ok := record["id"].(json.Number)
+
+			if !ok {
+				continue
+			}
+
+			idAsInt, err := id.Int64()
+
+			if err != nil {
+				continue
+			}
+
+			if max, ok := maxIds[itemType]; idAsInt > max || !ok {
+				maxIds[itemType] = idAsInt + 1
+			}
+		}
 	}
 }
 
