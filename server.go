@@ -58,6 +58,8 @@ func main() {
 	addStaticRoutes(router)
 	addDynamicRoutes(router)
 
+	// This goroutine will flush the JSON to the db.json file every 30 seconds,
+	// OR before the application exits
 	go flushJson()
 
 	n := negroni.Classic()

@@ -20,6 +20,8 @@ var (
 
 type BackingData map[string]interface{}
 
+// recordIndex returns the index of a record within the `BackingData[itemType]` array
+//
 func (b BackingData) recordIndex(itemType string, id int64) (int, error) {
 	rows, err := b.ItemType(itemType)
 
@@ -31,10 +33,9 @@ func (b BackingData) recordIndex(itemType string, id int64) (int, error) {
 		rowMap, _ := row.(map[string]interface{})
 
 		currentId, ok := rowMap["id"].(json.Number)
-		currentIdAsInt, err := currentId.Int64()
 
 		if !ok {
-			logger.Errorf("ID either not present for record %i or it's unknown type\n", i)
+			logger.Errorf("ID either not present for record at index %i or it's unknown type\n", i)
 			continue
 		}
 
@@ -44,7 +45,7 @@ func (b BackingData) recordIndex(itemType string, id int64) (int, error) {
 		}
 
 		// Found the item
-		if currentIdAsInt == id {
+		if currentId, _ := currentId.Int64(); currentId == id {
 			return i, nil
 		}
 	}
@@ -52,6 +53,9 @@ func (b BackingData) recordIndex(itemType string, id int64) (int, error) {
 	return -1, ErrorNotFound
 }
 
+// RecordWithId will return a record with the provided ID. If no such record exists, err
+// will be set to ErrorNotFound
+//
 func (b BackingData) RecordWithId(itemType string, id int64) (map[string]interface{}, error) {
 	rows, err := b.ItemType(itemType)
 
@@ -185,11 +189,9 @@ func flushJson() {
 	// Flush loop
 	for {
 		select {
-		case sig := <-c:
+		case <-c:
 			write()
-			if sig == os.Interrupt {
-				os.Exit(0)
-			}
+			return
 		// Flush every 30 seconds
 		case <-time.After(30 * time.Second):
 			write()
