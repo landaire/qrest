@@ -49,7 +49,7 @@ func addDynamicRoutes(router *httprouter.Router) {
 				id++
 			}
 
-			data["id"] = id
+			data["id"] = json.Number(strconv.FormatInt(id, 10))
 
 			dirty = true
 			serverData.AddRecord(itemType, data)
