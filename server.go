@@ -39,13 +39,16 @@ import (
 )
 
 var (
-	logger *logrus.Logger
+	loggerMiddleware *nlogrus.Middleware
+	logger           *logrus.Logger
 )
 
-func main() {
-	logr := nlogrus.NewMiddleware()
-	logger = logr.Logger
+func init() {
+	loggerMiddleware = nlogrus.NewMiddleware()
+	logger = loggerMiddleware.Logger
+}
 
+func main() {
 	// TODO: Should probably use `flag` package
 	if len(os.Args) != 2 {
 		logger.Println(os.Args)
@@ -59,6 +62,11 @@ func main() {
 		port = ":3000"
 	}
 
+	StartServer(port)
+}
+
+func StartServer(addr string) {
+
 	router := httprouter.New()
 
 	addStaticRoutes(router)
@@ -69,7 +77,7 @@ func main() {
 	go flushJson()
 
 	n := negroni.Classic()
-	n.Use(logr)
+	n.Use(loggerMiddleware)
 	n.UseHandler(router)
-	n.Run(port)
+	n.Run(addr)
 }
