@@ -161,7 +161,12 @@ func TestFetchingRecord(t *testing.T) {
 	}
 
 	// Test getting a bad record
+	errorMessage := "Should have gotten an error, none given"
+	if _, err := serverData.RecordWithId("posts", -1); err == nil {
+		t.Error(errorMessage)
+	}
+
 	if _, err := serverData.RecordWithId("non-existant", -1); err == nil {
-		t.Error("Should have gotten an error, none given")
+		t.Error(errorMessage)
 	}
 }
