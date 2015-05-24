@@ -46,7 +46,13 @@ func main() {
 	logr := nlogrus.NewMiddleware()
 	logger = logr.Logger
 
-	parseJsonFile()
+	// TODO: Should probably use `flag` package
+	if len(os.Args) != 2 {
+		logger.Println(os.Args)
+		logger.Fatalf("Invalid number of arguments. Usage: %s /path/to/db.json", os.Args[0])
+	}
+
+	parseJsonFile(os.Args[2])
 
 	port := ":" + os.Getenv("PORT")
 	if port == ":" {

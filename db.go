@@ -115,14 +115,9 @@ func (b BackingData) AddRecord(itemType string, record map[string]interface{}) {
 }
 
 // Parses the JSON file provided in the command arguments
-func parseJsonFile() {
-	if len(os.Args) != 2 {
-		logger.Println(os.Args)
-		logger.Fatalln("Invalid number of arguments")
-	}
-
-	filename := os.Args[1]
-	file, err := os.Open(filename)
+//
+func parseJsonFile(fname string) {
+	file, err := os.Open(fname)
 	if err != nil {
 		logger.Fatalln(err)
 	}
