@@ -74,7 +74,7 @@ func StartServer(addr string) {
 
 	// This goroutine will flush the JSON to the db.json file every 30 seconds,
 	// OR before the application exits
-	go flushJson()
+	go flushJson(JsonFilePath)
 
 	n := negroni.Classic()
 	n.Use(loggerMiddleware)

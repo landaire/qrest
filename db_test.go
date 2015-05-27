@@ -1,11 +1,10 @@
 package main
+
 import (
-	"testing"
-	"io/ioutil"
-	"os"
-	"fmt"
-	"reflect"
 	"encoding/json"
+	"reflect"
+	"strings"
+	"testing"
 )
 
 const jsonTestData = `
@@ -36,30 +35,6 @@ const jsonTestData = `
   ]
 }
 `
-
-func TestMain(t *testing.M) {
-	tempFile, err := ioutil.TempFile("", "qrest")
-	n, err := tempFile.Write([]byte(jsonTestData))
-	tempFile.Close()
-
-	if n != len([]byte(jsonTestData)) {
-		fmt.Fprintln(os.Stderr, "invalid number of bytes written to temp file")
-		os.Exit(1)
-	}
-
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	if err == nil {
-		parseJsonFile(tempFile.Name())
-	} else {
-		fmt.Fprintln(os.Stderr, "could not create temp file")
-	}
-
-	os.Exit(t.Run())
-}
 
 func TestParseJsonFile(t *testing.T) {
 	// `TestMain` will have already called parseJsonFile for the initial setup,
@@ -95,27 +70,27 @@ func TestItemTypes(t *testing.T) {
 
 func TestFetchingRecord(t *testing.T) {
 	type Record struct {
-		Type string
-		Id int64
+		Type     string
+		Id       int64
 		Expected map[string]interface{}
 	}
 
 	recordsToFetch := []Record{
-		Record {
+		Record{
 			Type: "posts",
-			Id: 1,
+			Id:   1,
 			Expected: map[string]interface{}{
-				"id": int64(1),
-				"title": "Testing",
+				"id":     int64(1),
+				"title":  "Testing",
 				"author": "Foo",
 			},
 		},
-		Record {
+		Record{
 			Type: "comments",
-			Id: 2,
+			Id:   2,
 			Expected: map[string]interface{}{
-				"id": int64(2),
-				"body": "Testing Comment ID 2",
+				"id":     int64(2),
+				"body":   "Testing Comment ID 2",
 				"postId": int64(2),
 			},
 		},
@@ -140,8 +115,6 @@ func TestFetchingRecord(t *testing.T) {
 				t.Error("invalid key", key)
 				continue
 			}
-
-
 
 			if expectedValue != actualValue {
 				expectedType := reflect.TypeOf(expectedValue)
@@ -170,3 +143,27 @@ func TestFetchingRecord(t *testing.T) {
 		t.Error(errorMessage)
 	}
 }
+
+func TestJsonDecode(t *testing.T) {
+	reader := strings.NewReader(`{"number": 2}`)
+
+	data := make(map[string]interface{})
+
+	err := decodeJson(reader, &data)
+
+	if err != nil {
+		t.Fail()
+	}
+
+	// kind of quicker than reflect.TypeOf?
+	switch data["number"].(type) {
+	case json.Number:
+		break
+	default:
+		t.Fail()
+	}
+}
+
+// TODO: Need to add tests for db. Most of the functionality will also be covered by the handlers, but there
+// should also be isolated tests
+//

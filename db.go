@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"sync"
 	"time"
+	"io"
 )
 
 var (
@@ -16,7 +17,14 @@ var (
 	dirty         = false
 	maxIds		  = make(map[string]int64)
 	ErrorNotFound = errors.New("Item not present in data set")
+	JsonFilePath string
 )
+
+func init() {
+	if len(os.Args) > 1 {
+		JsonFilePath = os.Args[1]
+	}
+}
 
 type BackingData map[string]interface{}
 
@@ -124,11 +132,7 @@ func parseJsonFile(fname string) {
 
 	defer file.Close()
 
-	decoder := json.NewDecoder(file)
-	// decode as json.Number type instead of float64
-	decoder.UseNumber()
-
-	err = decoder.Decode(&serverData)
+	err = decodeJson(file, &serverData)
 	if err != nil {
 		logger.Fatalln(err)
 	}
@@ -158,8 +162,7 @@ func parseJsonFile(fname string) {
 }
 
 // Flushes the in-memory data to the JSON file
-func flushJson() {
-	filename := os.Args[1]
+func flushJson(filename string) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
@@ -192,4 +195,13 @@ func flushJson() {
 			write()
 		}
 	}
+}
+
+// Makes decoding JSON less repetitive (no need to create the decoder, call UseNumber(), etc.)
+//
+func decodeJson(r io.Reader, data interface{}) error {
+	decoder := json.NewDecoder(r)
+	decoder.UseNumber()
+
+	return decoder.Decode(data)
 }
