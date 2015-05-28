@@ -44,14 +44,34 @@ func TestGetAllRecordsOfType(t *testing.T) {
 }
 
 func TestGetRecord(t *testing.T) {
-	resp, err := http.Get("http://" + TestServerAddr + "/posts")
-
-	if err != nil {
-		t.Error(err)
-		return
+	paths := map[string]string{
+		"/posts/2": `{
+					  "id": 2,
+					  "title": "Testing Post ID 2",
+					  "author": "Bar"
+					}`,
+		"/comments/1": `{
+						  "id": 1,
+						  "body": "Testing",
+						  "postId": 1
+						}`,
 	}
 
-	defer resp.Body.Close()
+	for path, expectedJson := range paths {
+		testGetRequest(t, path, expectedJson, http.StatusOK, true, false)
+	}
+
+
+	invalidPaths := []string{
+		"/posts/-1",
+		"/posts/9000",
+		"/comments/-1",
+		"/comments/9000",
+	}
+
+	for _, path := range invalidPaths {
+		testGetRequest(t, path, "", http.StatusNotFound, true, false)
+	}
 }
 
 func TestPostRecord(t *testing.T) {
