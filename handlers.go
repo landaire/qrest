@@ -34,6 +34,7 @@ func addDynamicRoutes(router *httprouter.Router) {
 		// `value` and `key` as whatever they were in the last(?) iteration of the above for loop
 		itemType := itemType
 
+		// POST /type
 		router.POST(fmt.Sprintf("/%s", itemType), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			data, err := readRequestData(r)
 			if err != nil {
@@ -43,7 +44,9 @@ func addDynamicRoutes(router *httprouter.Router) {
 
 			dataMutex.Lock()
 
-			var id int64
+			// The idea with grabbing the record with ID 1 is to see if any records even exist. If none exist, the loop
+			// should not execute at all, giving the first record id 1
+			id := int64(1)
 			_, err = serverData.RecordWithId(itemType, id)
 			for id = maxIds[itemType]; err != ErrorNotFound; _, err = serverData.RecordWithId(itemType, id) {
 				id++
@@ -54,16 +57,20 @@ func addDynamicRoutes(router *httprouter.Router) {
 			dirty = true
 			serverData.AddRecord(itemType, data)
 
-			maxIds[itemType] = id + 1
+			maxIds[itemType] = id
 
 			dataMutex.Unlock()
+
+			w.WriteHeader(http.StatusCreated)
 		})
 
+		// GET /type
 		router.GET(fmt.Sprintf("/%s", itemType), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			items, _ := serverData.ItemType(itemType)
 			genericJsonResponse(w, r, items)
 		})
 
+		// (GET,PATCH,PUT,DELETE) /type/id
 		for _, method := range []string{"GET", "PATCH", "PUT", "DELETE"} {
 			method := method
 			router.Handle(method, fmt.Sprintf("/%s/:id", itemType), func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

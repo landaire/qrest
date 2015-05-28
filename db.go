@@ -122,6 +122,21 @@ func (b BackingData) AddRecord(itemType string, record map[string]interface{}) {
 	b[itemType] = append(items, record)
 }
 
+func (b BackingData) Copy() BackingData {
+	data := make(BackingData)
+
+	for key, value := range b {
+		mapValue, ok := value.(map[string]interface{})
+		if ok {
+			data[key] = map[string]interface{}(BackingData(mapValue).Copy())
+		} else {
+			data[key] = value
+		}
+	}
+
+	return data
+}
+
 // Parses the JSON file provided in the command arguments
 //
 func parseJsonFile(fname string) {
@@ -155,7 +170,7 @@ func parseJsonFile(fname string) {
 			}
 
 			if max, ok := maxIds[itemType]; idAsInt > max || !ok {
-				maxIds[itemType] = idAsInt + 1
+				maxIds[itemType] = idAsInt
 			}
 		}
 	}
