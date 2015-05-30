@@ -164,7 +164,7 @@ func TestPostRecord(t *testing.T) {
 				continue
 			}
 
-			err = makePostRequest("/" + recordType, bytes.NewBuffer(testAsJson), http.StatusCreated)
+			err = makeRequest("POST", "/" + recordType, bytes.NewBuffer(testAsJson), []int{http.StatusCreated})
 			if err != nil {
 				t.Error(err)
 				return
@@ -187,7 +187,82 @@ func TestPostRecord(t *testing.T) {
 }
 
 func TestPutRecord(t *testing.T) {
+	databaseBeforeModification := serverData.Copy()
+	defer func() {
+		serverData = databaseBeforeModification
+	}()
 
+	arbitraryStringWithRandomNumber := func(text string) string {
+		return fmt.Sprintf("%s %d", rand.Int())
+	}
+
+	titleString := func() string {
+		return arbitraryStringWithRandomNumber("Title")
+	}
+
+	authorString := func() string {
+		return arbitraryStringWithRandomNumber("Author")
+	}
+
+	bodyString := func() string {
+		return arbitraryStringWithRandomNumber("Body")
+	}
+
+	// welcome to map[string]interface{} hell
+	types := map[string][]map[string]interface{} {
+		"posts": []map[string]interface{} {
+			map[string]interface{} {
+				"id": 2,
+				"title": titleString(),
+				"author": authorString(),
+			},
+			map[string]interface{} {
+				"id": 1000,
+				"title": titleString(),
+				"author": authorString(),
+			},
+		},
+		"comments": []map[string]interface{} {
+			map[string]interface{} {
+				"id": 2, // ID should be ignored
+				"body": bodyString(),
+				"postId": rand.Int(),
+			},
+			map[string]interface{} {
+				"id": 1000,
+				"body": bodyString(),
+				"postId": rand.Int(),
+			},
+		},
+	}
+
+	for recordType, tests := range types {
+		for _, test := range tests {
+			testAsJson, err := json.Marshal(test)
+			if err != nil {
+				t.Error(err)
+				continue
+			}
+
+			acceptableStatuses := []int{http.StatusCreated, http.StatusOK}
+			err = makeRequest("PUT", fmt.Sprintf("/%s/%d", recordType, test["id"]), bytes.NewBuffer(testAsJson), acceptableStatuses)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+
+			testAsJson, err = json.Marshal(test)
+			if err != nil {
+				t.Error(err)
+				continue
+			}
+
+			err = testGetRequest(fmt.Sprintf("/%s/%d", recordType, int64(test["id"].(int))), string(testAsJson), http.StatusOK, false, true)
+			if err != nil {
+				t.Error(err)
+			}
+		}
+	}
 }
 
 func TestDeleteRecord(t *testing.T) {
@@ -230,18 +305,37 @@ func testGetRequest(path string, expectedJson string, expectedStatus int, useArr
 	return nil
 }
 
-func makePostRequest(path string, body io.Reader, expectedStatus int) error {
+// Makes a request at `path` with the given method and body. `acceptableStatuses` are any status that is acceptable
+//
+func makeRequest(method string, path string, body io.Reader, acceptableStatuses []int) error {
 	// TODO: make the body type a parameter to support testing that body type is application/json? currently no
 	// such check exists
-	resp, err := http.Post("http://" + TestServerAddr + path, "application/json", body)
+	req, err := http.NewRequest(method, "http://" + TestServerAddr + path, body)
+
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+
 	if err != nil {
 		return err
 	}
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != expectedStatus {
-		return fmt.Errorf("Unexpected status code. Expected %d, got %d\n", expectedStatus, resp.StatusCode)
+	statusPresent := false
+
+	for _, status := range acceptableStatuses {
+		if resp.StatusCode == status {
+			statusPresent = true
+			break
+		}
+	}
+
+	if !statusPresent {
+		return fmt.Errorf("Unexpected status code. Expected any of %v, got %d\n", acceptableStatuses, resp.StatusCode)
 	}
 
 	return nil
