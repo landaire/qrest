@@ -80,10 +80,34 @@ func addDynamicRoutes(router *httprouter.Router) {
 
 				if err != nil {
 					if err == ErrorNotFound {
-						w.WriteHeader(http.StatusNotFound)
+						// If it's not found, then this request acts as a POST
+						if method == "PUT" {
+							newData, err := readRequestData(r)
+							if err != nil {
+								w.WriteHeader(http.StatusBadRequest)
+								return
+							}
+
+							if _, hasId := newData["id"]; !hasId {
+								newData["id"] = idParam
+							}
+
+							dataMutex.Lock()
+							dirty = true
+
+							serverData.AddRecord(itemType, newData)
+
+							dataMutex.Unlock()
+
+							w.WriteHeader(http.StatusCreated)
+						} else {
+							w.WriteHeader(http.StatusNotFound)
+						}
 					} else {
 						w.WriteHeader(http.StatusInternalServerError)
 					}
+
+					return
 				}
 
 				// The method type determines how we respond
@@ -140,29 +164,6 @@ func addDynamicRoutes(router *httprouter.Router) {
 					dataMutex.Unlock()
 
 					w.WriteHeader(http.StatusOK)
-					return
-				}
-
-				// If it's not found, then this request acts as a POST
-				if method == "PUT" {
-					newData, err := readRequestData(r)
-					if err != nil {
-						w.WriteHeader(http.StatusBadRequest)
-						return
-					}
-
-					if _, hasId := newData["id"]; !hasId {
-						newData["id"] = idParam
-					}
-
-					dataMutex.Lock()
-					dirty = true
-
-					serverData.AddRecord(itemType, newData)
-
-					dataMutex.Unlock()
-
-					w.WriteHeader(http.StatusCreated)
 					return
 				}
 			})
