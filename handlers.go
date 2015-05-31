@@ -52,7 +52,7 @@ func addDynamicRoutes(router *httprouter.Router) {
 				id++
 			}
 
-			data["id"] = json.Number(strconv.FormatInt(id, 10))
+			data["id"] = id
 
 			dirty = true
 			serverData.AddRecord(itemType, data)
@@ -201,11 +201,7 @@ func genericJsonResponse(w http.ResponseWriter, r *http.Request, data interface{
 func readRequestData(r *http.Request) (returnData map[string]interface{}, err error) {
 	returnData = make(map[string]interface{})
 
-	decoder := json.NewDecoder(r.Body)
-	decoder.UseNumber()
-
-	// don't handle err here since it's returned
-	err = decoder.Decode(&returnData)
+	err = decodeJson(r.Body, &returnData)
 
 	return
 }

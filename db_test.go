@@ -157,7 +157,7 @@ func TestJsonDecode(t *testing.T) {
 
 	// kind of quicker than reflect.TypeOf?
 	switch data["number"].(type) {
-	case json.Number:
+	case int64:
 		break
 	default:
 		t.Fail()

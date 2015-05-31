@@ -3,21 +3,22 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"time"
-	"io"
 )
 
 var (
 	serverData    = make(BackingData)
 	dataMutex     sync.RWMutex
 	dirty         = false
-	maxIds		  = make(map[string]int64)
+	maxIds        = make(map[string]int64)
 	ErrorNotFound = errors.New("Item not present in data set")
-	JsonFilePath string
+	JsonFilePath  string
 )
 
 func init() {
@@ -40,7 +41,7 @@ func (b BackingData) recordIndex(itemType string, id int64) (int, error) {
 	for i, row := range rows {
 		rowMap, _ := row.(map[string]interface{})
 
-		currentId, ok := rowMap["id"].(json.Number)
+		currentId, ok := rowMap["id"].(int64)
 
 		if !ok {
 			logger.Errorf("ID either not present for record at index %i or it's unknown type\n", i)
@@ -53,7 +54,7 @@ func (b BackingData) recordIndex(itemType string, id int64) (int, error) {
 		}
 
 		// Found the item
-		if currentId, _ := currentId.Int64(); currentId == id {
+		if currentId == id {
 			return i, nil
 		}
 	}
@@ -126,15 +127,41 @@ func (b BackingData) Copy() BackingData {
 	data := make(BackingData)
 
 	for key, value := range b {
-		mapValue, ok := value.(map[string]interface{})
-		if ok {
-			data[key] = map[string]interface{}(BackingData(mapValue).Copy())
-		} else {
-			data[key] = value
-		}
+		data[key] = copyInterfaceType(value)
 	}
 
 	return data
+}
+
+func copyInterfaceType(value interface{}) interface{} {
+	switch value.(type) {
+	case map[string]interface{}:
+		mapValue := value.(map[string]interface{})
+
+		mapValueCopy := make(map[string]interface{})
+
+		for key, value := range mapValue {
+			mapValueCopy[key] = copyInterfaceType(value)
+		}
+
+		return mapValueCopy
+	case []interface{}:
+		valueArray := value.([]interface{})
+		valueArrayCopy := make([]interface{}, len(valueArray))
+		copy(valueArrayCopy, valueArray)
+		for i, value := range valueArrayCopy {
+			valueArray[i] = copyInterfaceType(value)
+		}
+
+		return valueArrayCopy
+	case json.Number:
+		jsonNumber := value.(json.Number)
+		number, _ := jsonNumber.Int64()
+
+		return json.Number(strconv.FormatInt(number, 10))
+	default:
+		return value
+	}
 }
 
 // Parses the JSON file provided in the command arguments
@@ -157,20 +184,18 @@ func parseJsonFile(fname string) {
 		rows, _ := serverData.ItemType(itemType)
 		for _, record := range rows {
 			record := record.(map[string]interface{})
-			id, ok := record["id"].(json.Number)
+			id, ok := record["id"].(int64)
 
 			if !ok {
 				continue
 			}
 
-			idAsInt, err := id.Int64()
-
 			if err != nil {
 				continue
 			}
 
-			if max, ok := maxIds[itemType]; idAsInt > max || !ok {
-				maxIds[itemType] = idAsInt
+			if max, ok := maxIds[itemType]; id > max || !ok {
+				maxIds[itemType] = id
 			}
 		}
 	}
@@ -218,5 +243,53 @@ func decodeJson(r io.Reader, data interface{}) error {
 	decoder := json.NewDecoder(r)
 	decoder.UseNumber()
 
-	return decoder.Decode(data)
+	err := decoder.Decode(data)
+
+	if err != nil {
+		return err
+	}
+
+	// Convert all json.Number to int64
+	if dataMap, ok := data.(*map[string]interface{}); ok {
+		convertMapNumbers(*dataMap)
+	}
+
+	if backingData, ok := data.(*BackingData); ok {
+		backingDataAsMap := (*map[string]interface{})(backingData)
+		convertMapNumbers(*backingDataAsMap)
+	}
+
+	return nil
+}
+
+func convertMapNumbers(data map[string]interface{}) {
+	for key, value := range data {
+		data[key] = convertMapType(value)
+	}
+}
+
+func convertMapType(value interface{}) interface{} {
+	switch value.(type) {
+	case map[string]interface{}:
+		dataMap := value.(map[string]interface{})
+		convertMapNumbers(dataMap)
+
+		return dataMap
+	case []interface{}:
+		valueArray := value.([]interface{})
+		for i, value := range valueArray {
+			newValue := convertMapType(value)
+			valueArray[i] = newValue
+		}
+
+		return valueArray
+	case json.Number:
+		number := value.(json.Number)
+		numberAsInt, _ := number.Int64()
+
+		return numberAsInt
+	default:
+		return value
+	}
+
 }

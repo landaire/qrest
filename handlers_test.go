@@ -93,11 +93,11 @@ func TestGetRecord(t *testing.T) {
 func TestPostRecord(t *testing.T) {
 	databaseBeforeModification := serverData.Copy()
 	defer func() {
-		serverData = databaseBeforeModification
+		serverData = databaseBeforeModification.Copy()
 	}()
 
 	arbitraryStringWithRandomNumber := func(text string) string {
-		return fmt.Sprintf("%s %d", rand.Int())
+		return fmt.Sprintf("%s %d", text, rand.Int())
 	}
 
 	titleString := func() string {
@@ -138,20 +138,20 @@ func TestPostRecord(t *testing.T) {
 			map[string]interface{} {
 				"id": 2, // ID should be ignored
 				"body": bodyString(),
-				"postId": rand.Int(),
+				"postId": rand.Int63(),
 			},
 			map[string]interface{} {
 				"id": -1,
 				"body": bodyString(),
-				"postId": rand.Int(),
+				"postId": rand.Int63(),
 			},
 			map[string]interface{} {
 				"body": bodyString(),
-				"postId": rand.Int(),
+				"postId": rand.Int63(),
 			},
 			map[string]interface{} {
 				"body": bodyString(),
-				"postId": rand.Int(),
+				"postId": rand.Int63(),
 			},
 		},
 	}
@@ -192,8 +192,9 @@ func TestPutRecord(t *testing.T) {
 		serverData = databaseBeforeModification
 	}()
 
+
 	arbitraryStringWithRandomNumber := func(text string) string {
-		return fmt.Sprintf("%s %d", rand.Int())
+		return fmt.Sprintf("%s %d", text, rand.Int())
 	}
 
 	titleString := func() string {
@@ -226,12 +227,12 @@ func TestPutRecord(t *testing.T) {
 			map[string]interface{} {
 				"id": 2, // ID should be ignored
 				"body": bodyString(),
-				"postId": rand.Int(),
+				"postId": rand.Int63(),
 			},
 			map[string]interface{} {
 				"id": 1000,
 				"body": bodyString(),
-				"postId": rand.Int(),
+				"postId": rand.Int63(),
 			},
 		},
 	}
@@ -266,11 +267,31 @@ func TestPutRecord(t *testing.T) {
 }
 
 func TestDeleteRecord(t *testing.T) {
+	databaseBeforeModification := serverData.Copy()
+	defer func() {
+		serverData = databaseBeforeModification
+	}()
 
+	err := makeRequest("DELETE", "/posts/1", strings.NewReader(""), []int{http.StatusOK})
+
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	err = testGetRequest("/posts/1", "", http.StatusNotFound, false, false)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 }
 
 func TestGetAll(t *testing.T) {
-
+	err := testGetRequest("/db", jsonTestData, http.StatusOK, false, true)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 }
 
 func testGetRequest(path string, expectedJson string, expectedStatus int, useArray bool, compareBody bool) error {
@@ -291,16 +312,17 @@ func testGetRequest(path string, expectedJson string, expectedStatus int, useArr
 		return nil
 	}
 
-	match, err := jsonResponseMatchesActual(resp, expectedJson, useArray)
-
-	if !match {
-		// TODO: make this print out the data mismatch? should probably just print the raw maps
-		return fmt.Errorf("Data mismatch for path %s\n", path)
-	}
+	match, err, expected, actual := jsonResponseMatchesActual(resp, expectedJson, useArray)
 
 	if err != nil {
 		return err
 	}
+
+	if !match {
+		// TODO: make this print out the data mismatch? should probably just print the raw maps
+		return fmt.Errorf("Data mismatch for path %s.\n Expected:\n%#v\n\ngot\n%#v", path, expected, actual)
+	}
+
 
 	return nil
 }
@@ -341,7 +363,7 @@ func makeRequest(method string, path string, body io.Reader, acceptableStatuses 
 	return nil
 }
 
-func jsonResponseMatchesActual(resp *http.Response, expected string, useArray bool) (bool, error) {
+func jsonResponseMatchesActual(resp *http.Response, expected string, useArray bool) (bool, error, interface{}, interface{}) {
 	var (
 		expectedData interface{}
 		actualData   interface{}
@@ -354,7 +376,7 @@ func jsonResponseMatchesActual(resp *http.Response, expected string, useArray bo
 	}
 
 	if contentType := resp.Header.Get("Content-Type"); contentType != "application/json" {
-		return false, fmt.Errorf("Unexpected Content-Type %s\n", contentType)
+		return false, fmt.Errorf("Unexpected Content-Type %s\n", contentType), nil, nil
 	}
 
 	if useArray {
@@ -366,14 +388,14 @@ func jsonResponseMatchesActual(resp *http.Response, expected string, useArray bo
 	err := decodeJson(strings.NewReader(expected), &expectedData)
 
 	if err != nil {
-		return false, err
+		return false, err, nil, nil
 	}
 
 	err = decodeJson(resp.Body, &actualData)
 
 	if err != nil {
-		return false, err
+		return false, err, nil, nil
 	}
 
-	return reflect.DeepEqual(expectedData, actualData), nil
+	return reflect.DeepEqual(expectedData, actualData), nil, expectedData, actualData
 }
