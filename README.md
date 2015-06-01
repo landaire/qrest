@@ -1,5 +1,7 @@
 qrest is a quick RESTful JSON server
 
+[![Build Status](https://travis-ci.org/landaire/qrest.svg?branch=travis-ci)](https://travis-ci.org/landaire/qrest)
+
 # Usage
 
 Create a JSON file containing the data you'd like to be part of your server. An example file might look like:
